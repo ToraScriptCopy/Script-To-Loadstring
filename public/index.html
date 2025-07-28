@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Roblox Script Uploader</title>
+  <style>
+    * { box-sizing: border-box; margin:0; padding:0; }
+    body, html { width:100%; height:100%; overflow:hidden; font-family:sans-serif; background:#000; color:#fff; }
+    a { color:#0af; text-decoration:none; }
+    canvas#stars { position:fixed; top:0; left:0; width:100%; height:100%; z-index:-1; }
+    #menu-btn { position:fixed; top:1rem; left:1rem; width:2rem; height:2rem; cursor:pointer; }
+    #menu-btn div { width:100%; height:0.25rem; background:#fff; margin:0.35rem 0; }
+    #sidebar { position:fixed; top:0; left:-200px; width:200px; height:100%; background:rgba(0,0,0,0.8); padding:2rem 1rem; transition:left .3s; }
+    #sidebar.open { left:0; }
+    #sidebar nav a { display:block; margin:1rem 0; color:#fff; }
+    #app { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:1rem; text-align:center; }
+    #script { width:80%; max-width:600px; height:180px; background:rgba(0,0,0,0.6); border:none; outline:none; color:#fff; padding:1rem; border-radius:0.5rem; resize:none; }
+    #slider-container { position:absolute; top:50%; right:1rem; transform:translateY(-50%); }
+    #slider { writing-mode: bt-lr; -webkit-appearance: slider-vertical; width:8px; height:150px; }
+    #gen {
+      margin-top:1rem;
+      background:linear-gradient(270deg, #000, #fff, #000);
+      background-size:600% 100%;
+      color:#fff; border:none; padding:0.75rem 2rem;
+      font-size:1rem; border-radius:0.5rem; cursor:pointer;
+      animation: shimmer 3s infinite;
+    }
+    @keyframes shimmer { 0%{ background-position:0% 0% } 100%{ background-position:100% 0% } }
+    #progress { width:80%; max-width:600px; height:5px; margin:1rem 0; background:#222; overflow:hidden; display:none; }
+    #progress .bar {
+      width:0%; height:100%; background:linear-gradient(90deg,#000,#fff,#000);
+      background-size:300% 100%; animation: move 1s infinite;
+    }
+    @keyframes move { 0%{ background-position:0% 0% } 100%{ background-position:100% 0% } }
+    #modal {
+      position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8);
+      display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none;
+      transition:opacity .3s;
+    }
+    #modal.show { opacity:1; pointer-events:auto; }
+    #modal .box {
+      background:#111; padding:2rem; border-radius:1rem; text-align:center; animation: pop 0.3s ease-out;
+    }
+    @keyframes pop { 0%{ transform:scale(0.5) } 100%{ transform:scale(1) } }
+    #modal button {
+      margin-top:1rem; padding:0.5rem 1.5rem; border:none; border-radius:0.5rem;
+      background:linear-gradient(270deg, #000, #fff, #000);
+      background-size:600% 100%; animation: shimmer 3s infinite; color:#fff; cursor:pointer;
+    }
+    #copyright {
+      position:fixed; bottom:0.5rem; right:1rem;
+      font-size:0.6rem; color:rgba(255,255,255,0.7);
+    }
+  </style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<div id="menu-btn"><div></div><div></div><div></div></div>
+<div id="sidebar"><nav><a href="#" data-view="main">Main</a><a href="#" data-view="history">History</a></nav></div>
+<div id="app" data-view="main">
+  <textarea id="script" placeholder="Вставьте ваш Lua-скрипт…"></textarea>
+  <div id="slider-container"><input type="range" id="slider" min="0" max="100" value="50"></div>
+  <div id="progress"><div class="bar"></div></div>
+  <button id="gen">Generate</button>
+</div>
+<div id="app" data-view="history" style="display:none; flex-direction:column;">
+  <h2>История</h2><div id="hist-list" style="text-align:left; width:80%; max-width:600px; overflow-y:auto; max-height:60vh;"></div>
+</div>
+<div id="modal"><div class="box"><h2>Successfully!</h2><p id="out-link"></p><pre id="out-load"></pre><button id="again">Generate again</button></div></div>
+<p id="copyright">© All rights reserved</p>
+<script>
+// Stars background
+(() => {
+  const c = document.getElementById('stars');
+  const ctx = c.getContext('2d');
+  function resize(){ c.width=innerWidth; c.height=innerHeight; draw(); }
+  function draw(){
+    ctx.fillStyle='#000'; ctx.fillRect(0,0,c.width,c.height);
+    for(let i=0;i<200;i++){
+      const x=Math.random()*c.width, y=Math.random()*c.height;
+      ctx.fillStyle='rgba(255,255,255,'+Math.random()+')';
+      ctx.fillRect(x,y,1,1);
+    }
+  }
+  window.onresize = resize;
+  resize();
+})();
+const menuBtn = document.getElementById('menu-btn'), sidebar = document.getElementById('sidebar');
+menuBtn.onclick = ()=> sidebar.classList.toggle('open');
+document.querySelectorAll('#sidebar a').forEach(a=>{
+  a.onclick=e=>{
+    e.preventDefault();
+    document.querySelectorAll('#app').forEach(el=>el.style.display='none');
+    document.querySelector(`[data-view="${a.dataset.view}"]`).style.display='flex';
+    sidebar.classList.remove('open');
+  };
+});
+const genBtn = document.getElementById('gen'), progress = document.getElementById('progress'), bar = progress.querySelector('.bar');
+const modal = document.getElementById('modal'), outLink = document.getElementById('out-link'), outLoad = document.getElementById('out-load'), againBtn = document.getElementById('again'), histList = document.getElementById('hist-list');
+function addToHistory(entry){
+  const hist = JSON.parse(localStorage.getItem('rb_hist')||'[]');
+  hist.unshift(entry);
+  localStorage.setItem('rb_hist', JSON.stringify(hist.slice(0,20)));
+  renderHistory();
+}
+function renderHistory(){
+  const hist = JSON.parse(localStorage.getItem('rb_hist')||'[]');
+  histList.innerHTML = hist.map(e=>`
+    <div style="margin-bottom:1rem; padding:0.5rem; background:rgba(255,255,255,0.1); border-radius:0.5rem;">
+      <strong>Script code:</strong><pre>${e.script}</pre>
+      <strong>Link:</strong> <a href="${e.pasteUrl}" target="_blank">${e.pasteUrl}</a><br>
+      <strong>Loadstring:</strong><pre>${e.loadstring}</pre>
+    </div>
+  `).join('');
+}
+renderHistory();
+genBtn.onclick = async ()=>{
+  const script = document.getElementById('script').value.trim();
+  if(!script) return alert('Вставьте скрипт!');
+  progress.style.display='block'; bar.style.width='0%';
+  for(let i=0;i<=100;i+=5){ bar.style.width = i+'%'; await new Promise(r=>setTimeout(r,20)); }
+  try {
+    const res = await fetch('/.netlify/functions/create-paste', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ script })
+    });
+    const json = await res.json(); if(json.error) throw new Error(json.error);
+    const id = json.id, pasteUrl = `https://pastebin.com/${id}`, raw = `https://pastebin.com/raw/${id}`;
+    const loadstr = `loadstring(game:HttpGet('${raw}',true))()`;
+    outLink.innerHTML = `Link: <a href="${pasteUrl}" target="_blank">${pasteUrl}</a>`;
+    outLoad.textContent = loadstr;
+    addToHistory({ script, pasteUrl, loadstring: loadstr });
+    modal.classList.add('show');
+  } catch(err) { alert('Ошибка: '+err.message); }
+  progress.style.display='none';
+};
+againBtn.onclick = ()=>{ modal.classList.remove('show'); document.getElementById('script').value = ''; };
+</script>
+</body>
+</html>

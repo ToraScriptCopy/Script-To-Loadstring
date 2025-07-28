@@ -1,0 +1,8 @@
+{
+  "name": "roblox-uploader",
+  "version": "1.0.0",
+  "main": "netlify/functions/create-paste.js",
+  "dependencies": {
+    "node-fetch": "^2.6.1"
+  }
+}
